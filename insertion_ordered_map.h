@@ -50,7 +50,17 @@ public:
     insertion_ordered_map &operator=(insertion_ordered_map other) = default;
 
     bool insert(K const &k, V const &v) {
+        if (!contains(k) || (end() - 2)->first != k) {
+            if (map_ptr.use_count() > 2)
+                copy(this);
 
+            if (!contains(k)) {
+                //dodanie do mapy i listy TODO
+            }
+            else {
+                //przesunięcie iteratora na liście TODO
+            }
+        }
     }
 
     void erase(K const &k) {
