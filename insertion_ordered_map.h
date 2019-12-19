@@ -23,7 +23,7 @@ private:
     shared_ptr<unordered_map<K, typename list<pair<K, V>>::iterator>> map_ptr;
     shared_ptr<unordered_set<K>> referenced; // if there are elements, we cannot copy-on-write
     void copy(insertion_ordered_map &copied) {
-        // here we have to add copying
+        // here we have to add copying TODO
         referenced = make_shared<unordered_set<K>>();
     }
 
@@ -54,7 +54,18 @@ public:
     }
 
     void erase(K const &k) {
-        referenced->erase(k);
+        if (!contains(k))
+            throw lookup_error();
+        else {
+            referenced->erase(k);
+
+            if (map_ptr.use_count() > 2)
+                copy(this);
+
+            map_ptr->erase(k);
+
+            // we have erase k from list some way TODO
+        }
     }
 
     void merge(insertion_ordered_map const &other) {
@@ -62,11 +73,25 @@ public:
     }
 
     V &at(K const &k) {
-        referenced->insert(k);
+        if (!contains(k))
+            throw lookup_error();
+        else {
+            referenced->insert(k);
+            if (map_ptr.use_count() > 2)
+                copy(this);
+            // we have to return ref TODO
+        }
     }
 
     V const &at(K const &k) const {
-
+        if (!contains(k))
+            throw lookup_error();
+        else {
+            referenced->insert(k);
+            if (map_ptr.use_count() > 2)
+                copy(this);
+            // we have to return ref TODO
+        }
     }
 
     V &operator[](K const &k) {
