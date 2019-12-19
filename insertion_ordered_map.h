@@ -79,7 +79,14 @@ public:
     }
 
     void merge(insertion_ordered_map const &other) {
+        if (map_ptr.use_count() > 2)
+            copy(this);
 
+        for (K j: other.map_ptr) {
+            if (!this->contains(j)) {
+                insert(j, other[j]->second);
+            }
+        }
     }
 
     V &at(K const &k) {
@@ -105,7 +112,17 @@ public:
     }
 
     V &operator[](K const &k) {
+        referenced->insert(k);
 
+        if (map_ptr.use_count() > 2)
+            copy(this);
+
+        if (contains(k)) {
+            // we have to return ref TODO
+        }
+        else {
+            // we have to insert and ref TODO
+        }
     }
 
     size_t size() const {
