@@ -23,8 +23,14 @@ private:
     shared_ptr<unordered_map<K, typename list<pair<K, V>>::iterator>> map_ptr;
     shared_ptr<unordered_set<K>> referenced; // if there are elements, we cannot copy-on-write
     void copy(insertion_ordered_map &copied) {
-        // here we have to add copying TODO
         referenced = make_shared<unordered_set<K>>();
+        shared_ptr<list<pair<K, V>>> old_list = values_with_keys;
+        map_ptr = make_shared<unordered_map<K, typename list<pair<K, V>>::iterator>>();
+        values_with_keys = make_shared<list<pair<K, V>>>();
+
+        for (pair<K,V> i: old_list) {
+            insert(i.first, i.second);
+        }
     }
 
 public:
@@ -55,10 +61,15 @@ public:
                 copy(this);
 
             if (!contains(k)) {
-                //dodanie do mapy i listy TODO
+                typename list<pair<K, V>>::iterator i = values_with_keys->insert(make_pair(k, v));
+                map_ptr->insert(k, i);
             }
             else {
-                //przesunięcie iteratora na liście TODO
+                V second = map_ptr[k]->second;
+                values_with_keys->erase(map_ptr[k]);
+                typename list<pair<K, V>>::iterator i = values_with_keys->insert(make_pair(k, second));
+                map_ptr->erase(k);
+                map_ptr->insert(k, i);
             }
         }
     }
@@ -73,8 +84,7 @@ public:
                 copy(this);
 
             map_ptr->erase(k);
-
-            // we have erase k from list some way TODO
+            values_with_keys->erase(k);
         }
     }
 
@@ -96,7 +106,7 @@ public:
             referenced->insert(k);
             if (map_ptr.use_count() > 2)
                 copy(this);
-            // we have to return ref TODO
+            return &(map_ptr[k]->second);
         }
     }
 
@@ -107,7 +117,7 @@ public:
             referenced->insert(k);
             if (map_ptr.use_count() > 2)
                 copy(this);
-            // we have to return ref TODO
+            return &(map_ptr[k]->second);
         }
     }
 
@@ -117,19 +127,17 @@ public:
         if (map_ptr.use_count() > 2)
             copy(this);
 
-        if (contains(k)) {
-            // we have to return ref TODO
+        if (!contains(k)) {
+            insert(k, V());
         }
-        else {
-            // we have to insert and ref TODO
-        }
+        return &(map_ptr[k]->second);
     }
 
-    size_t size() const {
+    [[nodiscard]] size_t size() const {
         return map_ptr->size();
     }
 
-    bool empty() const {
+    [[nodiscard]] bool empty() const {
         return size() == 0;
     }
 
@@ -142,8 +150,6 @@ public:
     bool contains(K const &k) const {
         return map_ptr->find(k) != (*map_ptr).end();
     }
-
-
 };
 
 #endif /* __INSERTION_ORDERED_MAP__ */
