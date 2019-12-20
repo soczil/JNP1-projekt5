@@ -45,12 +45,14 @@ class insertion_ordered_map {
   }
 
   void copy() {
+      // holding pointers if we will have to reset because of exception
       auto old_list = keys_and_values.get();
       auto old_map = map.get();
 
       try {
           copy_list();
           copy_map();
+          need_for_copy = false;
       } catch (exception &e) {
           keys_and_values.reset(old_list);
           map.reset(old_map);
@@ -58,6 +60,7 @@ class insertion_ordered_map {
       }
   }
 
+  // inserting when map does not contain key
   void insert_new(K const &k, V const &v) {
       auto pair = make_pair(k, v);
 
@@ -75,6 +78,7 @@ class insertion_ordered_map {
       }
   }
 
+  // inserting when map contains key
   void insert_old(K const &k) {
       auto element = map.get()->find(k);
       auto old_position = element->second;
@@ -121,7 +125,7 @@ class insertion_ordered_map {
   insertion_ordered_map(insertion_ordered_map &&other) noexcept {
       keys_and_values = other.keys_and_values;
       map = other.map;
-      need_for_copy = false;
+      need_for_copy = other.need_for_copy;
   }
 
   insertion_ordered_map &operator=(insertion_ordered_map other) {
@@ -133,11 +137,12 @@ class insertion_ordered_map {
   }
 
   bool insert(K const &k, V const &v) {
+      auto old_element = map.get()->find(k);
+
       if (!map.unique()) {
           copy();
       }
 
-      auto old_element = map.get()->find(k);
       if (old_element == map.get()->end()) {
           insert_new(k, v);
           return true;
@@ -145,38 +150,43 @@ class insertion_ordered_map {
           insert_old(k);
           return false;
       }
-
-      need_for_copy = false;
   }
 
   void erase(K const &k) {
       if (!contains(k)) {
           throw lookup_error();
       }
-      else {
-          if (!map.unique()) {
-              copy();
-          }
 
-          auto element = map.get()->find(k);
-
-          keys_and_values.get()->erase(element->second);
-          map.get()->erase(element);
+      if (!map.unique()) {
+          copy();
       }
+
+      auto element = map.get()->find(k);
+
+      keys_and_values.get()->erase(element->second);
+      map.get()->erase(element);
 
       need_for_copy = false;
   }
 
   void merge(insertion_ordered_map const &other) {
-      if (!map.unique()) {
-          copy();
+      auto old_list = keys_and_values.get();
+      auto old_map = map.get();
+
+      copy();
+
+      try {
+          auto other_iterator = other.keys_and_values.get()->begin();
+          while (other_iterator != other.keys_and_values.get()->end()) {
+              insert(other_iterator->first, other_iterator->second);
+              ++other_iterator;
+          }
+      } catch (exception &e) {
+          keys_and_values.reset(old_list);
+          map.reset(old_map);
+          throw e;
       }
 
-      auto other_iterator = other.keys_and_values.get()->begin();
-      while (other_iterator != other.keys_and_values.get()->end()) {
-          insert(other_iterator->first, other_iterator->second);
-          ++other_iterator;
-      }
   }
 
   V &at(K const &k) {
@@ -190,7 +200,6 @@ class insertion_ordered_map {
           copy();
       }
 
-      element = map.get()->find(k);
       need_for_copy = true;
 
       return element->second->second;
