@@ -5,7 +5,6 @@
 #include <list>
 #include <utility>
 #include <unordered_map>
-#include <unordered_set>
 #include <memory>
 
 using namespace std;
@@ -19,130 +18,175 @@ class lookup_error : public std::exception {
 template <class K, class V, class Hash = std::hash<K>>
 class insertion_ordered_map {
 private:
-    shared_ptr<list<pair<K, V>>> values_with_keys;
-    shared_ptr<unordered_map<K, typename list<pair<K, V>>::iterator>> map_ptr;
-    shared_ptr<unordered_set<K>> referenced; // if there are elements, we cannot copy-on-write
-    void copy(insertion_ordered_map &copied) {
-        // here we have to add copying TODO
-        referenced = make_shared<unordered_set<K>>();
+    using my_list = list<pair<K, V>>;
+    using my_unordered_map = unordered_map<K, typename my_list::iterator, Hash>;
+
+    shared_ptr<my_list> keys_and_values;
+    shared_ptr<my_unordered_map> map;
+
+    void copy_list() {
+        auto new_list = make_shared<my_list>(*keys_and_values);
+        keys_and_values = new_list;
+    }
+
+    void copy_map() {
+        auto new_map = make_shared<my_unordered_map>();
+        auto list_iterator = keys_and_values.get()->begin();
+        pair<K, typename my_list::iterator> p;
+
+        while (list_iterator != keys_and_values.get()->end()) {
+            p = make_pair(list_iterator->first, list_iterator);
+            new_map.get()->insert(p);
+            ++list_iterator;
+        }
+
+        map = new_map;
+    }
+
+    void copy() {
+        auto old_list = keys_and_values.get();
+        auto old_map = map.get();
+
+        try {
+            copy_list();
+            copy_map();
+        } catch (exception &e) {
+            keys_and_values.reset(old_list);
+            map.reset(old_map);
+            throw e;
+        }
+    }
+
+    void insert_new(K const &k, V const &v) {
+        auto pair = make_pair(k, v);
+
+        try {
+            keys_and_values.get()->push_back(pair);
+            auto position = --keys_and_values.get()->end();
+            auto new_element = make_pair(k, position);
+            map.get()->insert(new_element);
+        } catch (exception &e) {
+            if (keys_and_values.get()->back() == pair) {
+                keys_and_values.get()->pop_back();
+            }
+            throw e;
+        }
+    }
+
+    void insert_old(K const &k) {
+        auto element = map.get()->find(k);
+        auto old_position = element->second;
+        V v = old_position->second;
+        auto new_pair = make_pair(k, v);
+
+        try {
+            keys_and_values.get()->push_back(new_pair);
+            auto new_position = --keys_and_values.get()->end();
+            element->second = new_position;
+            keys_and_values.get()->erase(old_position);
+        } catch (exception &e) {
+            throw e;
+        }
     }
 
 public:
     insertion_ordered_map() {
-        values_with_keys = make_shared<list<pair<K, V>>>();
-        map_ptr = make_shared<unordered_map<K, typename list<pair<K, V>>::iterator>>();
-        referenced = make_shared<unordered_set<K>>();
+        keys_and_values = make_shared<list<pair<K, V>>>();
+        map = make_shared<my_unordered_map>();
     }
 
-    insertion_ordered_map(insertion_ordered_map const &other) {
-        if (!referenced->size()) {
-            map_ptr = other.map_ptr;
-            values_with_keys = other.values_with_keys;
-            referenced = make_shared<unordered_set<K>>();
-        }
-        else {
-            copy(other);
-        }
+    insertion_ordered_map &operator=(insertion_ordered_map other) {
+        keys_and_values = other.keys_and_values;
+        map = other.map;
+
+        return *this;
     }
-
-    insertion_ordered_map(insertion_ordered_map &&other) = default;
-
-    insertion_ordered_map &operator=(insertion_ordered_map other) = default;
 
     bool insert(K const &k, V const &v) {
-        if (!contains(k) || (end() - 2)->first != k) {
-            if (map_ptr.use_count() > 2)
-                copy(this);
+        if (!map.unique()) {
+            copy();
+        }
 
-            if (!contains(k)) {
-                //dodanie do mapy i listy TODO
-            }
-            else {
-                //przesunięcie iteratora na liście TODO
-            }
+        auto old_element = map.get()->find(k);
+        if (old_element == map.get()->end()) {
+            insert_new(k, v);
+            return true;
+        } else {
+            insert_old(k);
+            return false;
         }
     }
 
     void erase(K const &k) {
-        if (!contains(k))
+        if (!map.unique()) {
+            copy();
+        }
+
+        auto element = map.get()->find(k);
+        if (element == map.get()->end()) {
             throw lookup_error();
-        else {
-            referenced->erase(k);
-
-            if (map_ptr.use_count() > 2)
-                copy(this);
-
-            map_ptr->erase(k);
-
-            // we have erase k from list some way TODO
+        } else {
+            keys_and_values.get()->erase(element->second);
+            map.get()->erase(element);
         }
     }
 
     void merge(insertion_ordered_map const &other) {
-        if (map_ptr.use_count() > 2)
-            copy(this);
+        if (!map.unique()) {
+            copy();
+        }
 
-        for (K j: other.map_ptr) {
-            if (!this->contains(j)) {
-                insert(j, other[j]->second);
-            }
+        auto other_iterator = other.keys_and_values.get()->begin();
+        while (other_iterator != other.keys_and_values.get()->end()) {
+            insert(other_iterator->first, other_iterator->second);
+            ++other_iterator;
         }
     }
 
     V &at(K const &k) {
-        if (!contains(k))
-            throw lookup_error();
-        else {
-            referenced->insert(k);
-            if (map_ptr.use_count() > 2)
-                copy(this);
-            // we have to return ref TODO
-        }
+
     }
 
     V const &at(K const &k) const {
-        if (!contains(k))
-            throw lookup_error();
-        else {
-            referenced->insert(k);
-            if (map_ptr.use_count() > 2)
-                copy(this);
-            // we have to return ref TODO
-        }
+
     }
 
     V &operator[](K const &k) {
-        referenced->insert(k);
 
-        if (map_ptr.use_count() > 2)
-            copy(this);
-
-        if (contains(k)) {
-            // we have to return ref TODO
-        }
-        else {
-            // we have to insert and ref TODO
-        }
-    }
-
-    size_t size() const {
-        return map_ptr->size();
-    }
-
-    bool empty() const {
-        return size() == 0;
     }
 
     void clear() {
-        values_with_keys = make_shared<list<pair<K, V>>>();
-        map_ptr = make_shared<unordered_map<K, typename list<pair<K, V>>::iterator>>();
-        referenced = make_shared<unordered_set<K>>();
+        auto old_list = keys_and_values.get();
+        auto old_map = map.get();
+
+        try {
+            if (!map.unique()) {
+                // making new list and map
+                keys_and_values = make_shared<my_list>();
+                map = make_shared<my_unordered_map>();
+            } else {
+                // clearing existing list and map
+                keys_and_values.get()->clear();
+                map.get()->clear();
+            }
+        } catch (exception &e) {
+            keys_and_values.reset(old_list);
+            map.reset(old_map);
+            throw e;
+        }
+    }
+
+    [[nodiscard]] size_t size() const {
+        return map.get()->size();
+    }
+
+    [[nodiscard]] bool empty() const {
+        return map.get()->empty();
     }
 
     bool contains(K const &k) const {
-        return map_ptr->find(k) != (*map_ptr).end();
+        return (map.get()->find(k) != map.get()->end());
     }
-
 
 };
 
