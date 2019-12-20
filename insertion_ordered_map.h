@@ -93,6 +93,8 @@ private:
     }
 
 public:
+    ~insertion_ordered_map() = default;
+
     insertion_ordered_map() {
         keys_and_values = make_shared<list<pair<K, V>>>();
         map = make_shared<my_unordered_map>();
@@ -100,16 +102,16 @@ public:
     }
 
     insertion_ordered_map(insertion_ordered_map const &other) {
-        if (need_for_copy) {
-            copy();
-        } else {
-            keys_and_values = other.keys_and_values;
-            map = other.map;
-        }
+        keys_and_values = other.keys_and_values;
+        map = other.map;
         need_for_copy = false;
+
+        if (other.need_for_copy) {
+            copy();
+        }
     }
 
-    insertion_ordered_map(insertion_ordered_map &&other) {
+    insertion_ordered_map(insertion_ordered_map &&other) noexcept {
         keys_and_values = other.keys_and_values;
         map = other.map;
         need_for_copy = false;
@@ -118,6 +120,7 @@ public:
     insertion_ordered_map &operator=(insertion_ordered_map other) {
         keys_and_values = other.keys_and_values;
         map = other.map;
+        need_for_copy = false;
 
         return *this;
     }
@@ -125,7 +128,6 @@ public:
     bool insert(K const &k, V const &v) {
         if (!map.unique()) {
             copy();
-            need_for_copy = false;
         }
 
         auto old_element = map.get()->find(k);
@@ -136,12 +138,13 @@ public:
             insert_old(k);
             return false;
         }
+
+        need_for_copy = false;
     }
 
     void erase(K const &k) {
         if (!map.unique()) {
             copy();
-            need_for_copy = false;
         }
 
         auto element = map.get()->find(k);
@@ -151,12 +154,13 @@ public:
             keys_and_values.get()->erase(element->second);
             map.get()->erase(element);
         }
+
+        need_for_copy = false;
     }
 
     void merge(insertion_ordered_map const &other) {
         if (!map.unique()) {
             copy();
-            need_for_copy = false;
         }
 
         auto other_iterator = other.keys_and_values.get()->begin();
@@ -176,8 +180,8 @@ public:
         if (!map.unique()) {
             copy();
         }
-        need_for_copy = false;
         element = map.get()->find(k);
+        need_for_copy = true;
 
         return element->second->second;
     }
@@ -195,9 +199,8 @@ public:
         if (element == map.get()->end()) {
             insert(k, V());
         }
-        element = map.get()->find(k);
 
-        return element->second->second;
+        return at(k);
     }
 
     void clear() {
@@ -219,6 +222,7 @@ public:
             map.reset(old_map);
             throw e;
         }
+        need_for_copy = false;
     }
 
     [[nodiscard]] size_t size() const {
@@ -238,6 +242,8 @@ public:
         typename my_list::iterator it;
 
     public:
+        ~iterator() = default;
+
         iterator() = default;
 
         iterator(const iterator &other) {
