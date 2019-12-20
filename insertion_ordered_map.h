@@ -23,6 +23,7 @@ private:
 
     shared_ptr<my_list> keys_and_values;
     shared_ptr<my_unordered_map> map;
+    bool need_for_copy;
 
     void copy_list() {
         auto new_list = make_shared<my_list>(*keys_and_values);
@@ -62,7 +63,8 @@ private:
 
         try {
             keys_and_values.get()->push_back(pair);
-            auto position = --keys_and_values.get()->end();
+            auto position = keys_and_values.get()->end();
+            --position;
             auto new_element = make_pair(k, position);
             map.get()->insert(new_element);
         } catch (exception &e) {
@@ -81,7 +83,8 @@ private:
 
         try {
             keys_and_values.get()->push_back(new_pair);
-            auto new_position = --keys_and_values.get()->end();
+            auto new_position = keys_and_values.get()->end();
+            --new_position;
             element->second = new_position;
             keys_and_values.get()->erase(old_position);
         } catch (exception &e) {
@@ -93,6 +96,23 @@ public:
     insertion_ordered_map() {
         keys_and_values = make_shared<list<pair<K, V>>>();
         map = make_shared<my_unordered_map>();
+        need_for_copy = false;
+    }
+
+    insertion_ordered_map(insertion_ordered_map const &other) {
+        if (need_for_copy) {
+            copy();
+        } else {
+            keys_and_values = other.keys_and_values;
+            map = other.map;
+        }
+        need_for_copy = false;
+    }
+
+    insertion_ordered_map(insertion_ordered_map &&other) {
+        keys_and_values = other.keys_and_values;
+        map = other.map;
+        need_for_copy = false;
     }
 
     insertion_ordered_map &operator=(insertion_ordered_map other) {
@@ -105,6 +125,7 @@ public:
     bool insert(K const &k, V const &v) {
         if (!map.unique()) {
             copy();
+            need_for_copy = false;
         }
 
         auto old_element = map.get()->find(k);
@@ -120,6 +141,7 @@ public:
     void erase(K const &k) {
         if (!map.unique()) {
             copy();
+            need_for_copy = false;
         }
 
         auto element = map.get()->find(k);
@@ -134,6 +156,7 @@ public:
     void merge(insertion_ordered_map const &other) {
         if (!map.unique()) {
             copy();
+            need_for_copy = false;
         }
 
         auto other_iterator = other.keys_and_values.get()->begin();
@@ -144,15 +167,37 @@ public:
     }
 
     V &at(K const &k) {
+        auto element = map.get()->find(k);
 
+        if (element == map.get()->end()) {
+            throw lookup_error();
+        }
+
+        if (!map.unique()) {
+            copy();
+        }
+        need_for_copy = false;
+        element = map.get()->find(k);
+
+        return element->second->second;
     }
 
     V const &at(K const &k) const {
-
+        return at(k);
     }
 
     V &operator[](K const &k) {
+        if (!map.unique()) {
+            copy();
+        }
 
+        auto element = map.get()->find(k);
+        if (element == map.get()->end()) {
+            insert(k, V());
+        }
+        element = map.get()->find(k);
+
+        return element->second->second;
     }
 
     void clear() {
@@ -186,6 +231,61 @@ public:
 
     bool contains(K const &k) const {
         return (map.get()->find(k) != map.get()->end());
+    }
+
+    class iterator {
+    private:
+        typename my_list::iterator it;
+
+    public:
+        iterator() = default;
+
+        iterator(const iterator &other) {
+            it = other.it;
+        }
+
+        explicit iterator(const typename my_list::iterator &other) {
+            it = other;
+        }
+
+        iterator &operator++() {
+            ++it;
+            return *this;
+        }
+
+        pair<K, V> &operator*() {
+            return *it;
+        }
+
+        pair<K, V> *operator->() {
+            return &(*it);
+        }
+
+        bool operator==(const iterator &other) {
+            return (it == other.it);
+        }
+
+        bool operator!=(const iterator &other) {
+            return (it != other.it);
+        }
+
+        friend bool operator==(const iterator &a, const iterator &b) {
+            return (a.it == b.it);
+        }
+
+        friend bool operator!=(const iterator &a, const iterator &b) {
+            return (a.it != b.it);
+        }
+    };
+
+    iterator begin() const {
+        iterator it (keys_and_values.get()->begin());
+        return it;
+    }
+
+    iterator end() const {
+        iterator it (keys_and_values.get()->end());
+        return it;
     }
 
 };
