@@ -137,6 +137,11 @@ class insertion_ordered_map {
   }
 
   bool insert(K const &k, V const &v) {
+      if (map.get() == nullptr) {
+          keys_and_values = make_shared<my_list>();
+          map = make_shared<my_unordered_map>();
+      }
+
       auto old_element = map.get()->find(k);
 
       if (!map.unique()) {
@@ -153,6 +158,7 @@ class insertion_ordered_map {
   }
 
   void erase(K const &k) {
+
       if (!contains(k)) {
           throw lookup_error();
       }
@@ -170,6 +176,11 @@ class insertion_ordered_map {
   }
 
   void merge(insertion_ordered_map const &other) {
+      if (map.get() == nullptr) {
+          keys_and_values = make_shared<my_list>();
+          map = make_shared<my_unordered_map>();
+      }
+
       auto old_list = keys_and_values.get();
       auto old_map = map.get();
 
@@ -190,9 +201,7 @@ class insertion_ordered_map {
   }
 
   V &at(K const &k) {
-      auto element = map.get()->find(k);
-
-      if (element == map.get()->end()) {
+      if (!contains(k)) {
           throw lookup_error();
       }
 
@@ -202,14 +211,28 @@ class insertion_ordered_map {
 
       need_for_copy = true;
 
+      auto element = map.get()->find(k);
+
       return element->second->second;
   }
 
   V const &at(K const &k) const {
-      return at(k);
+      if (!contains(k)) {
+          throw lookup_error();
+      }
+
+      auto element = map.get()->find(k);
+
+      return element->second->second;
   }
 
+  template<typename = std::enable_if_t<is_default_constructible<V>::value>>
   V &operator[](K const &k) {
+      if (map.get() == nullptr) {
+          keys_and_values = make_shared<my_list>();
+          map = make_shared<my_unordered_map>();
+      }
+
       if (!map.unique()) {
           copy();
       }
@@ -227,7 +250,7 @@ class insertion_ordered_map {
       auto old_map = map.get();
 
       try {
-          if (!map.unique()) {
+          if (map.get() == nullptr || !map.unique()) {
               // making new list and map
               keys_and_values = make_shared<my_list>();
               map = make_shared<my_unordered_map>();
@@ -245,14 +268,23 @@ class insertion_ordered_map {
   }
 
   [[nodiscard]] size_t size() const {
+      if (this->map.get() == nullptr)
+          return 0;
+
       return map.get()->size();
   }
 
   [[nodiscard]] bool empty() const {
+      if (this->map.get() == nullptr)
+          return true;
+
       return map.get()->empty();
   }
 
   bool contains(K const &k) const {
+      if (this->map.get() == nullptr)
+          return false;
+
       return (map.get()->find(k) != map.get()->end());
   }
 
